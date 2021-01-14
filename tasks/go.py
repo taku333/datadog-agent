@@ -3,18 +3,17 @@ Golang related tasks go here
 """
 from __future__ import print_function
 
-import csv
 import datetime
 import os
 import shutil
 import sys
 
+import yaml
 from invoke import task
 from invoke.exceptions import Exit
 
-from .bootstrap import get_deps, process_deps
 from .build_tags import get_default_build_tags
-from .utils import get_build_flags, get_gopath
+from .utils import get_build_flags
 
 # We use `basestring` in the code for compat with python2 unicode strings.
 # This makes the same code work in python3 as well.
@@ -96,7 +95,7 @@ def lint(ctx, targets):
 
     # add the /... suffix to the targets
     targets_list = ["{}/...".format(t) for t in targets]
-    result = ctx.run("golint {}".format(' '.join(targets_list)))
+    result = ctx.run("go run golang.org/x/lint/golint {}".format(' '.join(targets_list)))
     if result.stdout:
         files = []
         skipped_files = set()
@@ -159,7 +158,7 @@ def cyclo(ctx, targets, limit=15):
         # as comma separated tokens in a string
         targets = targets.split(',')
 
-    ctx.run("gocyclo -over {} ".format(limit) + " ".join(targets))
+    ctx.run("go run github.com/fzipp/gocyclo -over {} ".format(limit) + " ".join(targets))
     # gocyclo exits with status 1 when it finds an issue, if we're here
     # everything went smooth
     print("gocyclo found no issues")
@@ -184,7 +183,7 @@ def golangci_lint(ctx, targets, rtloader_root=None, build_tags=None, arch="x64")
     for target in targets:
         print("running golangci on {}".format(target))
         ctx.run(
-            "golangci-lint run --timeout 10m0s -c .golangci.yml --build-tags '{}' {}".format(
+            "go run github.com/golangci/golangci-lint/cmd/golangci-lint run --timeout 10m0s -c .golangci.yml --build-tags '{}' {}".format(
                 " ".join(tags), "{}/...".format(target)
             ),
             env=env,
@@ -208,7 +207,7 @@ def ineffassign(ctx, targets):
         # as comma separated tokens in a string
         targets = targets.split(',')
 
-    ctx.run("ineffassign " + " ".join(target + "/..." for target in targets))
+    ctx.run("go run github.com/gordonklaus/ineffassign " + " ".join(target + "/..." for target in targets))
     # ineffassign exits with status 1 when it finds an issue, if we're here
     # everything went smooth
     print("ineffassign found no issues")
@@ -235,7 +234,9 @@ def staticcheck(ctx, targets, build_tags=None, arch="x64"):
     tags.remove("python")
     tags.remove("jmx")
 
-    ctx.run("staticcheck -checks=SA1027 -tags=" + ",".join(tags) + " " + " ".join(go_targets))
+    ctx.run(
+        "go run honnef.co/go/tools/cmd/staticcheck -checks=SA1027 -tags=" + ",".join(tags) + " " + " ".join(go_targets)
+    )
     # staticcheck exits with status 1 when it finds an issue, if we're here
     # everything went smooth
     print("staticcheck found no issues")
@@ -254,7 +255,7 @@ def misspell(ctx, targets):
         # as comma separated tokens in a string
         targets = targets.split(',')
 
-    result = ctx.run("misspell " + " ".join(targets), hide=True)
+    result = ctx.run("go run github.com/client9/misspell/cmd/misspell " + " ".join(targets), hide=True)
     legit_misspells = []
     for found_misspell in result.stdout.split("\n"):
         if len(found_misspell.strip()) > 0:
@@ -269,85 +270,47 @@ def misspell(ctx, targets):
 
 
 @task
-def deps(
-    ctx, verbose=False, android=False, no_bootstrap=False, no_dep_ensure=False,
-):
+def deps(ctx, verbose=False, android=False):
     """
     Setup Go dependencies
     """
-    if not no_bootstrap:
-        deps = get_deps('deps')
-        order = deps.get("order", deps.keys())
-        for dependency in order:
-            tool = deps.get(dependency)
-            if not tool:
-                print("Malformed bootstrap JSON, dependency {} not found".format(dependency))
-                raise Exit(code=1)
-            print("processing checkout tool {}".format(dependency))
-            process_deps(ctx, dependency, tool.get('version'), tool.get('type'), 'checkout', verbose=verbose)
+    # source level deps
+    print("calling go mod vendor")
+    start = datetime.datetime.now()
+    verbosity = ' -v' if verbose else ''
+    ctx.run("go mod vendor{}".format(verbosity))
+    # use modvendor to copy missing files dependencies
+    # ctx.run(
+    #    'go run github.com/goware/modvendor -copy="**/*.c **/*.h **/*.proto"{}'.format(get_gopath(ctx), verbosity)
+    # )
+    dep_done = datetime.datetime.now()
 
-        order = deps.get("order", deps.keys())
-        for dependency in order:
-            tool = deps.get(dependency)
-            if tool.get('install', True):
-                print("processing get tool {}".format(dependency))
-                process_deps(
-                    ctx,
-                    dependency,
-                    tool.get('version'),
-                    tool.get('type'),
-                    'install',
-                    cmd=tool.get('cmd'),
-                    verbose=verbose,
-                )
+    # If github.com/DataDog/datadog-agent gets vendored too - nuke it
+    #
+    # This may happen as a result of having to introduce DEPPROJECTROOT
+    # in our builders to get around a known-issue with go dep, and the
+    # strange GOPATH situation in our builders.
+    #
+    # This is only a workaround, we should eliminate the need to resort
+    # to DEPPROJECTROOT.
+    if os.path.exists('vendor/github.com/DataDog/datadog-agent'):
+        print("Removing vendored github.com/DataDog/datadog-agent")
+        shutil.rmtree('vendor/github.com/DataDog/datadog-agent')
+
+    # make sure PSUTIL is gone on windows; the go mod above will vendor it
+    # in because it's necessary on other platforms
+    if not android and sys.platform == 'win32':
+        print("Removing PSUTIL on Windows")
+        ctx.run("rd /s/q vendor\\github.com\\shirou\\gopsutil")
+
+    print("go mod vendor, elapsed: {}".format(dep_done - start))
 
     if android:
         ndkhome = os.environ.get('ANDROID_NDK_HOME')
         if not ndkhome:
             print("set ANDROID_NDK_HOME to build android")
             raise Exit(code=1)
-
-        cmd = "gomobile init -ndk {}".format(ndkhome)
-        print("gomobile command {}".format(cmd))
-        ctx.run(cmd)
-
-    if not no_dep_ensure:
-        # source level deps
-        print("calling go mod vendor")
-        start = datetime.datetime.now()
-        verbosity = ' -v' if verbose else ''
-        ctx.run("go mod vendor{}".format(verbosity))
-        # use modvendor to copy missing files dependencies
-        ctx.run('{}/bin/modvendor -copy="**/*.c **/*.h **/*.proto"{}'.format(get_gopath(ctx), verbosity))
-        dep_done = datetime.datetime.now()
-
-        # If github.com/DataDog/datadog-agent gets vendored too - nuke it
-        #
-        # This may happen as a result of having to introduce DEPPROJECTROOT
-        # in our builders to get around a known-issue with go dep, and the
-        # strange GOPATH situation in our builders.
-        #
-        # This is only a workaround, we should eliminate the need to resort
-        # to DEPPROJECTROOT.
-        if os.path.exists('vendor/github.com/DataDog/datadog-agent'):
-            print("Removing vendored github.com/DataDog/datadog-agent")
-            shutil.rmtree('vendor/github.com/DataDog/datadog-agent')
-
-        # make sure PSUTIL is gone on windows; the go mod above will vendor it
-        # in because it's necessary on other platforms
-        if not android and sys.platform == 'win32':
-            print("Removing PSUTIL on Windows")
-            ctx.run("rd /s/q vendor\\github.com\\shirou\\gopsutil")
-
-        # Make sure that golang.org/x/mobile is deleted.  It will get vendored in
-        # because we use it, and there's no way to exclude; however, we must use
-        # the version from $GOPATH
-        if os.path.exists('vendor/golang.org/x/mobile'):
-            print("Removing vendored golang.org/x/mobile")
-            shutil.rmtree('vendor/golang.org/x/mobile')
-
-    if not no_dep_ensure:
-        print("go mod vendor, elapsed: {}".format(dep_done - start))
+        ctx.run("go run golang.org/x/mobile/cmd/gomobile init {}".format(ndkhome))
 
 
 @task
@@ -409,9 +372,27 @@ def generate_licenses(ctx, filename='LICENSE-3rdparty.csv', verbose=False):
 
 
 def get_licenses_list(ctx):
-    result = ctx.run('{}/bin/wwhrd list --no-color'.format(get_gopath(ctx)), hide='err')
+    exceptions_wildcard = []
+    exceptions = []
+    with open('.wwhrd.yml') as wwhrd_conf_yml:
+        wwhrd_conf = yaml.safe_load(wwhrd_conf_yml)
+        for pkg in wwhrd_conf['exceptions']:
+            if pkg.endswith("/..."):
+                # TODO(python3.9): use removesuffix
+                exceptions_wildcard.append(pkg[: -len("/...")])
+            else:
+                exceptions.append(pkg)
+
+    def is_excluded(pkg):
+        if package in exceptions:
+            return True
+        for exception in exceptions_wildcard:
+            if package.startswith(exception):
+                return True
+        return False
+
+    result = ctx.run('go run github.com/frapposelli/wwhrd list --no-color', hide='err')
     licenses = []
-    licenses.append('core,"github.com/frapposelli/wwhrd",MIT')
     if result.stderr:
         for line in result.stderr.split("\n"):
             index = line.find('msg="Found License"')
@@ -424,47 +405,12 @@ def get_licenses_list(ctx):
                     license = val[len('license=') :]
                 elif val.startswith('package='):
                     package = val[len('package=') :]
-                    licenses.append("core,{},{}".format(package, license))
+                    if is_excluded(package):
+                        print("Skipping {} ({}) excluded in .wwhrd.yml".format(package, license))
+                    else:
+                        licenses.append("core,\"{}\",{}".format(package, license))
     licenses.sort()
     return licenses
-
-
-@task
-def lint_licenses_old(ctx):
-    # non-go deps that should be listed in the license file, but not in go.sum
-    NON_GO_DEPS = set(
-        ['github.com/codemirror/CodeMirror', 'github.com/FortAwesome/Font-Awesome', 'github.com/jquery/jquery',]
-    )
-
-    # Read all dep names from go.sum
-    go_deps = set()
-    with open('go.sum') as f:
-        for line in f:
-            gopkg = line.split(" ")
-            if len(gopkg) != 3:
-                continue
-            go_deps.add(gopkg[0])
-
-    deps = go_deps | NON_GO_DEPS
-
-    # Read all dep names listed in LICENSE-3rdparty
-    licenses = csv.DictReader(open('LICENSE-3rdparty.csv'))
-    license_deps = set()
-    for entry in licenses:
-        if len(entry['License']) == 0:
-            raise Exit(message="LICENSE-3rdparty entry '{}' has an empty license".format(entry['Origin']), code=1)
-        entrysplit = entry['Origin'].split("/")
-        entrysplit = entrysplit[0:3]
-        print('/'.join(entrysplit))
-        license_deps.add('/'.join(entrysplit))
-
-    if deps != license_deps:
-        raise Exit(
-            message="LICENSE-3rdparty.csv is outdated compared to deps listed in go.sum:\n"
-            + "missing from LICENSE-3rdparty.csv: {}\n".format(deps - license_deps)
-            + "listed in LICENSE-3rdparty.csv but not in go.sum: {}".format(license_deps - deps),
-            code=1,
-        )
 
 
 @task
