@@ -135,7 +135,7 @@ spec:
 
           while true; do
             for po in $(kubectl --namespace {{inputs.parameters.namespace}} get pods -l app=datadog-agent -o custom-columns=name:metadata.name --no-headers); do
-              kubectl exec $po -c agent -- agent health || {
+              kubectl exec --namespace {{inputs.parameters.namespace}} $po -c agent -- agent health || {
                 sleep 4
                 continue 2
               }
@@ -353,6 +353,100 @@ spec:
                   value: "{{inputs.parameters.namespace}}"
           - name: find-checks-hostname
             template: find-checks-hostname
+            arguments:
+              parameters:
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+
+    - name: status
+      inputs:
+        parameters:
+          - name: namespace
+      activeDeadlineSeconds: 200
+      script:
+        image: argoproj/argoexec:latest
+        command: [bash]
+        source: |
+          set -euo pipefail
+          set -x
+
+          kubectl --namespace {{inputs.parameters.namespace}} get pods -l app=datadog-agent -o custom-columns=name:metadata.name --no-headers | while read -r po; do
+            kubectl --namespace {{inputs.parameters.namespace}} exec $po -c agent -- agent status
+          done
+
+    - name: config
+      inputs:
+        parameters:
+          - name: namespace
+      activeDeadlineSeconds: 200
+      script:
+        image: argoproj/argoexec:latest
+        command: [bash]
+        source: |
+          set -euo pipefail
+          set -x
+
+          kubectl --namespace {{inputs.parameters.namespace}} get pods -l app=datadog-agent -o custom-columns=name:metadata.name --no-headers | while read -r po; do
+            kubectl --namespace {{inputs.parameters.namespace}} exec $po -c agent -- agent config
+          done
+
+    - name: configcheck
+      inputs:
+        parameters:
+          - name: namespace
+      activeDeadlineSeconds: 200
+      script:
+        image: argoproj/argoexec:latest
+        command: [bash]
+        source: |
+          set -euo pipefail
+          set -x
+
+          kubectl --namespace {{inputs.parameters.namespace}} get pods -l app=datadog-agent -o custom-columns=name:metadata.name --no-headers | while read -r po; do
+            kubectl --namespace {{inputs.parameters.namespace}} exec $po -c agent -- agent configcheck
+          done
+
+    - name: tagger-list
+      inputs:
+        parameters:
+          - name: namespace
+      activeDeadlineSeconds: 200
+      script:
+        image: argoproj/argoexec:latest
+        command: [bash]
+        source: |
+          set -euo pipefail
+          set -x
+
+          kubectl --namespace {{inputs.parameters.namespace}} get pods -l app=datadog-agent -o custom-columns=name:metadata.name --no-headers | while read -r po; do
+            kubectl --namespace {{inputs.parameters.namespace}} exec $po -c agent -- agent tagger-list
+          done
+
+    - name: diagnose
+      inputs:
+        parameters:
+          - name: namespace
+      steps:
+        - - name: status
+            template: status
+            arguments:
+              parameters:
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+          - name: config
+            template: config
+            arguments:
+              parameters:
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+          - name: configcheck
+            template: configcheck
+            arguments:
+              parameters:
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+          - name: tagger-list
+            template: tagger-list
             arguments:
               parameters:
                 - name: namespace
