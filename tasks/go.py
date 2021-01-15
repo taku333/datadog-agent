@@ -270,7 +270,7 @@ def misspell(ctx, targets):
 
 
 @task
-def deps(ctx, verbose=False, android=False):
+def deps(ctx, verbose=False):
     """
     Setup Go dependencies
     """
@@ -299,18 +299,11 @@ def deps(ctx, verbose=False, android=False):
 
     # make sure PSUTIL is gone on windows; the go mod above will vendor it
     # in because it's necessary on other platforms
-    if not android and sys.platform == 'win32':
+    if sys.platform == 'win32':
         print("Removing PSUTIL on Windows")
         ctx.run("rd /s/q vendor\\github.com\\shirou\\gopsutil")
 
     print("go mod vendor, elapsed: {}".format(dep_done - start))
-
-    if android:
-        ndkhome = os.environ.get('ANDROID_NDK_HOME')
-        if not ndkhome:
-            print("set ANDROID_NDK_HOME to build android")
-            raise Exit(code=1)
-        ctx.run("go run golang.org/x/mobile/cmd/gomobile init {}".format(ndkhome))
 
 
 @task

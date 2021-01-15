@@ -9,6 +9,7 @@ import sys
 
 import yaml
 from invoke import task
+from invoke.exceptions import Exit
 
 from .build_tags import get_default_build_tags
 from .go import generate
@@ -62,8 +63,14 @@ def build(
 
     build_tags = get_default_build_tags(build="android")
 
-    cmd = "gomobile bind -target android {race_opt} {build_type} -tags \"{go_build_tags}\" "
+    ndkhome = os.environ.get('ANDROID_NDK_HOME')
+    if not ndkhome:
+        print("set ANDROID_NDK_HOME to build android")
+        raise Exit(code=1)
 
+    ctx.run('go run golang.org/x/mobile/cmd/gomobile init')
+
+    cmd = "gomobile bind -target android {race_opt} {build_type} -tags \"{go_build_tags}\" "
     cmd += "-o {agent_bin} -gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/agent/android"
     args = {
         "race_opt": "-race" if race else "",
