@@ -152,9 +152,20 @@ func (c *APIClient) listForEventResync(eventReadTimeout int64, eventCardinalityL
 		log.Errorf("Error Listing events: %s", err.Error())
 		return nil, resVer, lastListTime, err
 	}
+
+	maxResourceVersion := 0
 	for id := range evList.Items {
 		// List call returns a different type than the Watch call.
 		added = append(added, &evList.Items[id])
+
+		resVer := evList.Items[id].ResourceVersion
+		resVerInt, _ := strconv.Atoi(resVer)
+		if resVerInt > maxResourceVersion {
+			maxResourceVersion = resVerInt
+		}
 	}
+
+	log.Infof("maxResourceVersion: %d, evList.ResourceVersion: %s", maxResourceVersion, evList.ResourceVersion)
+
 	return added, evList.ResourceVersion, time.Now(), nil
 }
