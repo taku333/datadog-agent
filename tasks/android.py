@@ -9,7 +9,6 @@ import sys
 
 import yaml
 from invoke import task
-from invoke.exceptions import Exit
 
 from .build_tags import get_default_build_tags
 from .go import generate
@@ -63,13 +62,8 @@ def build(
 
     build_tags = get_default_build_tags(build="android")
 
-    ndkhome = os.environ.get('ANDROID_NDK_HOME')
-    if not ndkhome:
-        print("set ANDROID_NDK_HOME to build android")
-        raise Exit(code=1)
-
-    ctx.run('go run golang.org/x/mobile/cmd/gomobile init')
-
+    ctx.run('go install golang.org/x/mobile/cmd/gomobile')
+    ctx.run('gomobile init')
     cmd = "gomobile bind -target android {race_opt} {build_type} -tags \"{go_build_tags}\" "
     cmd += "-o {agent_bin} -gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/agent/android"
     args = {
@@ -81,8 +75,6 @@ def build(
         "ldflags": ldflags,
         "REPO_PATH": REPO_PATH,
     }
-    # gomobile is not supporting go modules
-    # https://go-review.googlesource.com/c/mobile/+/167659/
     env["GO111MODULE"] = "off"
     ctx.run(cmd.format(**args), env=env)
 

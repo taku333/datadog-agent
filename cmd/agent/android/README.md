@@ -1,10 +1,10 @@
-# [BETA] Datadog Agent 6 on Android
+# [BETA] Datadog Agent 7 on Android
 
 **This feature is in beta and its options or behavior might break between minor or bugfix releases of the Agent.**
 
 ## Requirements
 
--  android sdk and ndk (installed with android studio for example)
+- android sdk and ndk-19c (installed with android studio for example)
 - jdk (warning: on macos `brew cask install java8`, jdk10 provided by Oracle doesn't work)
 
 
