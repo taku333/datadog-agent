@@ -62,9 +62,8 @@ def build(
 
     build_tags = get_default_build_tags(build="android")
 
-    ctx.run('go install golang.org/x/mobile/cmd/gomobile')
-    ctx.run('gomobile init')
-    cmd = "gomobile bind -target android {race_opt} {build_type} -tags \"{go_build_tags}\" "
+    ctx.run('go run golang.org/x/mobile/cmd/gomobile init')
+    cmd = "go run golang.org/x/mobile/cmd/gomobile bind -target android {race_opt} {build_type} -tags \"{go_build_tags}\" "
     cmd += "-o {agent_bin} -gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/agent/android"
     args = {
         "race_opt": "-race" if race else "",
@@ -75,7 +74,6 @@ def build(
         "ldflags": ldflags,
         "REPO_PATH": REPO_PATH,
     }
-    env["GO111MODULE"] = "off"
     ctx.run(cmd.format(**args), env=env)
 
     pwd = os.getcwd()
