@@ -7,7 +7,7 @@
   stage: deps_fetch
   needs: []
   script:
-    - inv -e deps --verbose
+    - inv -e deps
     - cd $CI_PROJECT_DIR/vendor && tar czf $CI_PROJECT_DIR/vendor.tar.gz .
   artifacts:
     expire_in: 1 day
