@@ -270,20 +270,21 @@ def misspell(ctx, targets):
 
 
 @task
-def deps(ctx, verbose=False):
+def deps(ctx):
     """
     Setup Go dependencies
     """
-    # source level deps
-    print("calling go mod vendor")
+
+    print("vendoring dependencies")
+
     start = datetime.datetime.now()
-    verbosity = ' -v' if verbose else ''
-    ctx.run("go mod vendor{}".format(verbosity))
-    # use modvendor to copy missing files dependencies
-    # ctx.run(
-    #    'go run github.com/goware/modvendor -copy="**/*.c **/*.h **/*.proto"{}'.format(get_gopath(ctx), verbosity)
-    # )
-    dep_done = datetime.datetime.now()
+
+    # "go mod vendor" doesn't copy files that aren't in a package: https://github.com/golang/go/issues/26366
+    # This breaks when deps include other files that are needed (eg: .c or .java files): https://github.com/golang/go/issues/43736
+    # For this reason, we need to use a 3rd party tool like vend or modvendor that copy everything.
+    # I went with vend because modvendor requires a list of files to copy, while vend just copies everything.
+    ctx.run("go mod download github.com/nomad-software/vend")
+    ctx.run("go run github.com/nomad-software/vend")
 
     # If github.com/DataDog/datadog-agent gets vendored too - nuke it
     #
@@ -303,6 +304,7 @@ def deps(ctx, verbose=False):
         print("Removing PSUTIL on Windows")
         ctx.run("rd /s/q vendor\\github.com\\shirou\\gopsutil")
 
+    dep_done = datetime.datetime.now()
     print("go mod vendor, elapsed: {}".format(dep_done - start))
 
 

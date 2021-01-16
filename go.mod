@@ -102,7 +102,6 @@ require (
 	github.com/google/pprof v0.0.0-20201117184057-ae444373da19
 	github.com/gordonklaus/ineffassign v0.0.0-20210103220932-664217a59c00
 	github.com/gorilla/mux v1.7.4
-	github.com/goware/modvendor v0.3.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.0
 	github.com/grpc-ecosystem/grpc-gateway v1.14.1
 	github.com/hashicorp/consul/api v1.4.0
@@ -123,6 +122,7 @@ require (
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/miekg/dns v1.1.31
 	github.com/moby/sys/mountinfo v0.4.0
+	github.com/nomad-software/vend v1.0.2
 	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d // indirect
 	github.com/olekukonko/tablewriter v0.0.2
 	github.com/oliveagle/jsonpath v0.0.0-20180606110733-2e52cf6e6852 // indirect

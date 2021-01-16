@@ -16,7 +16,7 @@ import (
 	_ "github.com/fzipp/gocyclo"
 	_ "github.com/golangci/golangci-lint/cmd/golangci-lint"
 	_ "github.com/gordonklaus/ineffassign"
-	_ "github.com/goware/modvendor"
+	_ "github.com/nomad-software/vend"
 	_ "github.com/shuLhan/go-bindata/cmd/go-bindata"
 	_ "github.com/stretchr/testify"
 	_ "golang.org/x/lint/golint"
